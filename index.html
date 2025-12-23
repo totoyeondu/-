@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>공정무역 초콜릿</title>
+    <title>공정무역 초콜릿이란?</title>
     <style>
         * {
             margin: 0;
@@ -242,6 +242,28 @@
             font-weight: 600;
         }
 
+        .loading-spinner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        .image-loaded {
+            opacity: 1;
+        }
+
         .dots-indicator {
             display: flex;
             justify-content: center;
@@ -276,7 +298,8 @@
         <div class="gallery-container">
             <div class="image-wrapper">
                 <img id="galleryImage" class="gallery-image fade-in" src="" alt="갤러리 이미지">
-                <div class="placeholder-text" id="placeholder">이미지를 불러오는 중...</div>
+                <div class="loading-spinner" id="loadingSpinner"></div>
+                <div class="placeholder-text" id="placeholder" style="display: none;">이미지를 불러오는 중...</div>
             </div>
             
             <div class="progress-bar">
@@ -313,12 +336,60 @@
         let currentIndex = 0;
         const galleryImage = document.getElementById('galleryImage');
         const placeholder = document.getElementById('placeholder');
+        const loadingSpinner = document.getElementById('loadingSpinner');
         const counter = document.getElementById('counter');
         const progressFill = document.getElementById('progressFill');
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
         const surveyBtn = document.getElementById('surveyBtn');
         const dotsIndicator = document.getElementById('dotsIndicator');
+
+        // 이미지 프리로드 캐시
+        const imageCache = {};
+        
+        // 이미지 프리로드 함수
+        function preloadImage(src) {
+            return new Promise((resolve, reject) => {
+                if (imageCache[src]) {
+                    resolve(imageCache[src]);
+                    return;
+                }
+                
+                const img = new Image();
+                img.onload = () => {
+                    imageCache[src] = img;
+                    resolve(img);
+                };
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+
+        // 주변 이미지 미리 로드 (현재 + 이전 + 다음)
+        function preloadAdjacentImages(index) {
+            const toPreload = [index];
+            if (index > 0) toPreload.push(index - 1);
+            if (index < images.length - 1) toPreload.push(index + 1);
+            
+            toPreload.forEach(i => {
+                if (images[i]) {
+                    preloadImage(images[i]).catch(() => {});
+                }
+            });
+        }
+
+        // 모든 이미지 백그라운드에서 프리로드
+        function preloadAllImages() {
+            images.forEach((src, index) => {
+                // 첫 3개 이미지는 우선 로드
+                if (index < 3) {
+                    preloadImage(src).catch(() => {});
+                } else {
+                    // 나머지는 약간 지연 후 로드
+                    setTimeout(() => preloadImage(src).catch(() => {}), 100 * index);
+                }
+            });
+        }
 
         // 도트 인디케이터 생성
         for (let i = 0; i < images.length; i++) {
@@ -330,10 +401,14 @@
         }
 
         function updateGallery() {
+            // 로딩 표시
+            loadingSpinner.style.display = 'block';
             galleryImage.classList.remove('fade-in');
             galleryImage.classList.add('fade-out');
             
-            setTimeout(() => {
+            // 캐시된 이미지 사용 또는 새로 로드
+            preloadImage(images[currentIndex]).then(() => {
+                loadingSpinner.style.display = 'none';
                 galleryImage.src = images[currentIndex];
                 galleryImage.classList.remove('fade-out');
                 galleryImage.classList.add('fade-in');
@@ -349,7 +424,14 @@
                 document.querySelectorAll('.dot').forEach((dot, index) => {
                     dot.classList.toggle('active', index === currentIndex);
                 });
-            }, 250);
+                
+                // 주변 이미지 프리로드
+                preloadAdjacentImages(currentIndex);
+            }).catch(() => {
+                loadingSpinner.style.display = 'none';
+                placeholder.style.display = 'block';
+                placeholder.textContent = '이미지를 불러올 수 없습니다';
+            });
         }
 
         function goToImage(index) {
@@ -413,6 +495,7 @@
         });
 
         // 초기 로드
+        preloadAllImages(); // 백그라운드에서 모든 이미지 프리로드
         updateGallery();
     </script>
 </body>
